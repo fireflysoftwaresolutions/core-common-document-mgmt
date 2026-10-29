@@ -1,0 +1,11 @@
+# Binary SDK generation contract
+
+The original document download controllers stream binary content. Their explicit OpenAPI responses declare an octet-stream string/binary body. The SDK packages the genuine producer canonical specification at both openapi.yml and api-spec/openapi.yml through the normal process-resources mirror.
+
+The retained source211 original build passed Maven and packaging qualification, but its generated WebClient SDK uses java.io.File by default. A separate Core-free controlled consumer invoked the genuine SDK: both typed download methods and both typed response-info variants failed with UnsupportedMediaType. The two independently invoked generated response-spec variants transferred the bytes, status and attachment header. That separate capability is not an automatic fallback or proof that the typed File methods work.
+
+The SDK now requests the original Java generator's supported useAbstractionForFiles option. The pinned Generator7.26 WebClient template selects org.springframework.core.io.Resource for file responses and parameters when this option is enabled. Generated Java and specification files are never edited by hand. The actual new output, compilation, package alias equality and typed byte decoding must be qualified through a new original generation run before useful transport is accepted.
+
+This is an intentional generated Java signature migration. The retained SDK had File return values for downloadContent/downloadVersionContent and their WithHttpInfo variants. Its createVersion, uploadContent and uploadVersionContent methods also took File parameters, including their generated variants. Consumers must adopt the actual regenerated abstraction signatures; unchanged REST paths do not imply Java source or binary compatibility. The exact emitted signatures remain evidence of the new generation run, not an assumption from this source option.
+
+These source and controlled transport checks do not establish server authentication, tenant authorization, provider storage, audited issuance, governed rendering, financial/legal acceptance or a published SDK release. The original source211 artifacts and failed typed File consumer remain retained separately. No installed or released coordinate is replaced.
