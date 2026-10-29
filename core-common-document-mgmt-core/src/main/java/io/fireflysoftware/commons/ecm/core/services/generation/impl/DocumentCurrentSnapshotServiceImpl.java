@@ -96,6 +96,27 @@ public final class DocumentCurrentSnapshotServiceImpl implements DocumentCurrent
                 ||definition.getUses()==null||!definition.getUses().contains(issuerRef.getUse())
                 ||issuer.getGeneration()==null||issuer.getGeneration()<1
                 ||issuer.getSourceGeneration()==null||issuer.getSourceGeneration()<1)throw unavailable();
+        var branding=definition.getSource();
+        if(definition.getDisplayName()==null||definition.getDisplayName().isBlank()||branding==null
+                ||!s.product().tenantId().toString().equals(branding.getTenantId())
+                ||!Boolean.TRUE.equals(branding.getTenantActive())||!Boolean.TRUE.equals(branding.getBrandingActive())
+                ||branding.getBrandingId()==null||branding.getBrandingId().isBlank()
+                ||branding.getBrandingVersion()==null||branding.getBrandingVersion()<0)throw unavailable();
+        var presentation=new DocumentCurrentSnapshot.IssuerPresentation(bounded(definition.getDisplayName(),1024),
+                optional(definition.getContactEmail(),1024),optional(branding.getTenantName(),1024),
+                optional(branding.getPrimaryColor(),100),optional(branding.getFooterText(),16384),
+                optional(branding.getLogoUrl(),4096),bounded(branding.getBrandingId(),200),branding.getBrandingVersion(),
+                DocumentCurrentSnapshot.IssuerProvenance.OWNER_ATTESTED);
+        var declared=layout.getDefinition().getSemanticDefinition().getLegalNotices();
+        if(declared==null)declared=List.of();
+        if(declared.size()>4||v.notices().size()!=declared.size())throw unavailable();
+        var notices=new ArrayList<DocumentCurrentSnapshot.Notice>();var identities=new HashSet<UUID>();var roles=new HashSet<String>();
+        for(int i=0;i<declared.size();i++){
+            var item=declared.get(i);var revision=v.notices().get(i);
+            if(item==null||item.getRole()==null||item.getPlacement()==null||item.getMasterReference()==null
+                    ||!identities.add(item.getMasterReference().getRevisionId())||!roles.add(item.getRole().getValue()))throw unavailable();
+            notices.add(notice(item,revision,s.locale()));
+        }
         Instant now=clock.instant();
         Instant mastersObserved=window(current.getObservedAtEpochMillis(),current.getEffectiveUntilEpochMillis(),now);
         Instant issuerObserved=window(issuer.getObservedAtEpochMillis(),issuer.getEffectiveUntilEpochMillis(),now);
@@ -113,8 +134,36 @@ public final class DocumentCurrentSnapshotServiceImpl implements DocumentCurrent
         return new DocumentCurrentSnapshot(s,content,source.getMediaType(),raw,schema,canonical,
                     new DocumentCurrentSnapshot.IssuerCurrentEvidence(issuer.getGeneration(),issuer.getSourceGeneration(),issuerObserved,
                             instant(issuer.getEffectiveUntilEpochMillis())),mastersObserved.isAfter(issuerObserved)?mastersObserved:issuerObserved,
-                    delivered,DocumentCurrentSnapshot.MastersProvenance.EFFECTIVE_ONLY,nativeUntil,retained);
+                    delivered,DocumentCurrentSnapshot.MastersProvenance.EFFECTIVE_ONLY,nativeUntil,retained,presentation,notices);
     }
+    private static DocumentCurrentSnapshot.Notice notice(DocumentLayoutNoticeReference item,DocumentTemplateRevisionDTO value,String locale) {
+        var ref=item.getMasterReference();
+        if(value==null||ref.getRevisionId()==null||ref.getTemplateId()==null
+                ||!ref.getRevisionId().equals(value.getRevisionId())||!ref.getTemplateId().equals(value.getTemplateId())
+                ||!Objects.equals(ref.getTemplateCode(),value.getTemplateCode())||!Objects.equals(ref.getVersion(),value.getVersion())
+                ||!locale.equals(ref.getLocaleCode())||!locale.equals(value.getLocaleCode())
+                ||!"PUBLISHED".equals(value.getLifecycle())||!"MASTERS_JSON_V1".equals(value.getCanonicalizationVersion())
+                ||!value.getCanonicalizationVersion().equals(String.valueOf(ref.getCanonicalizationVersion()))
+                ||!Objects.equals(value.getMediaType(),String.valueOf(ref.getMediaType()))
+                ||!Set.of("text/html","text/plain").contains(value.getMediaType()))throw unavailable();
+        String raw=bounded(value.getSourceSnapshotCanonicalJson(),1048576),schema=bounded(value.getInputSchemaCanonicalJson(),262144);
+        String content=bounded(value.getTemplateContent(),262144),style=bounded(value.getStyleContent(),65536);
+        if(!sha(raw).equals(ref.getSourceDigest())||!sha(raw).equals(value.getSourceDigest())
+                ||!sha(schema).equals(ref.getSchemaDigest())||!sha(schema).equals(value.getSchemaDigest())
+                ||!sha(content).equals(ref.getContentDigest())||!sha(content).equals(value.getContentDigest())
+                ||!sha(style).equals(ref.getStyleDigest())||!sha(style).equals(value.getStyleDigest()))throw unavailable();
+        try {
+            var tree=JSON.readTree(raw);
+            if(!tree.isObject()||!content.equals(tree.path("templateContent").asText())||!style.equals(tree.path("styleContent").asText())
+                    ||!locale.equals(tree.path("localeCode").asText())||!value.getVersion().equals(tree.path("version").asText())
+                    ||!value.getMediaType().equals(tree.path("mediaType").asText())||!JSON.readTree(schema).equals(tree.path("inputSchema")))throw unavailable();
+        }catch(java.io.IOException error){throw unavailable();}
+        return new DocumentCurrentSnapshot.Notice(item.getRole().getValue(),item.getPlacement().getValue(),
+                new DocumentSelection.MasterReference(value.getRevisionId(),value.getVersion(),value.getSourceDigest()),
+                value.getTemplateId(),value.getTemplateCode(),locale,value.getMediaType(),content,raw,schema,style,
+                value.getContentDigest(),value.getSchemaDigest(),value.getStyleDigest());
+    }
+    private static String optional(String value,int limit){return value==null?null:bounded(value,limit);}
     private Instant window(Long observed,Long until,Instant now) {
         Instant from=instant(observed),to=instant(until);
         if(from.isAfter(now)||!to.isAfter(now)||!to.isAfter(from)||to.isAfter(from.plus(LIMIT)))throw unavailable();

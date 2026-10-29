@@ -16,6 +16,8 @@
 
 package io.fireflysoftware.documents;
 
+import io.fireflysoftware.documents.impl.DocumentIssuance;
+
 import io.fireflysoftware.commons.ecm.models.repositories.DocumentMetadataRepository;
 import io.fireflysoftware.commons.ecm.models.repositories.DocumentRepository;
 import io.fireflysoftware.documents.render.DocumentRenderPort;
@@ -35,6 +37,7 @@ import org.springframework.context.annotation.Configuration;
  * {@code firefly.documents.render=freemarker} selects FreeMarker. A future engine replaces that bean.
  */
 @Configuration
+@ConditionalOnProperty(prefix="firefly.documents.governed", name="enabled", havingValue="false", matchIfMissing=true)
 public class DocumentAdapterConfiguration {
 
     @Bean

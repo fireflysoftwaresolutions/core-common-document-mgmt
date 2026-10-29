@@ -9,6 +9,13 @@ import reactor.core.publisher.Mono;
 /** Actual owner reads; implementations cannot grant document issuance or storage authority. */
 public interface DocumentOwnerReader {
     record Observations(DocumentReferenceCurrent current, DocumentLayoutPublicationDTO layout,
-            DocumentTemplateRevisionDTO source, DocumentIssuerObservation issuer, java.time.Instant delegationUntil) { }
+            DocumentTemplateRevisionDTO source, DocumentIssuerObservation issuer, java.time.Instant delegationUntil,
+            java.util.List<DocumentTemplateRevisionDTO> notices) {
+        public Observations { notices=notices==null?java.util.List.of():java.util.List.copyOf(notices); }
+        public Observations(DocumentReferenceCurrent current,DocumentLayoutPublicationDTO layout,
+                DocumentTemplateRevisionDTO source,DocumentIssuerObservation issuer,java.time.Instant delegationUntil) {
+            this(current,layout,source,issuer,delegationUntil,java.util.List.of());
+        }
+    }
     Mono<Observations> read(DocumentSelection selection, R2dbcOperationBudget original);
 }

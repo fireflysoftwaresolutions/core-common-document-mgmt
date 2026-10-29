@@ -16,6 +16,7 @@ import io.fireflysoftware.common.reference.master.data.sdk.model.*;
 import io.fireflysoftware.commons.ecm.core.services.generation.*;
 import org.fireflyframework.core.transaction.R2dbcOperationBudget;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Flux;
 
 /** Supplied genuine SDK clients own transport, endpoint and token configuration. */
 public final class SdkDocumentOwnerReader implements DocumentOwnerReader {
@@ -66,8 +67,20 @@ public final class SdkDocumentOwnerReader implements DocumentOwnerReader {
                     return bounded(original,()->{checked(m,mastersIssuer,selection);return current.observeCurrentDocumentReferences(target);}).flatMap(observed->
                             bounded(original,()->{checked(m,mastersIssuer,selection);return layouts.getDocumentLayoutRevision(selection.layout().revisionId());}).flatMap(l->
                             bounded(original,()->{checked(m,mastersIssuer,selection);return revisions.getDocumentTemplateRevision(selection.template().revisionId(),null);}).flatMap(s->
-                            bounded(original,()->{checked(c,configurationIssuer,selection);return issuers.observeCurrentDocumentIssuer(p.tenantId().toString(),issuerTarget);})
-                                    .map(i->{checked(m,mastersIssuer,selection);checked(c,configurationIssuer,selection);return new Observations(observed,l,s,i,m.until().isBefore(c.until())?m.until():c.until());}))));
+                            Mono.defer(()->{
+                                var notices=l.getDefinition().getSemanticDefinition().getLegalNotices();
+                                if(notices==null)notices=java.util.List.of();
+                                if(notices.size()>4)throw new IllegalStateException("Bounded legal notice references required");
+                                var ids=new java.util.HashSet<java.util.UUID>();
+                                for(var notice:notices)if(notice==null||notice.getMasterReference()==null
+                                        ||notice.getMasterReference().getRevisionId()==null||!ids.add(notice.getMasterReference().getRevisionId()))
+                                    throw new IllegalStateException("Distinct exact legal notice references required");
+                                return Flux.fromIterable(notices).concatMap(notice->bounded(original,()->{
+                                    checked(m,mastersIssuer,selection);
+                                    return revisions.getDocumentTemplateRevision(notice.getMasterReference().getRevisionId(),null);
+                                })).collectList();
+                            }).flatMap(notices->bounded(original,()->{checked(c,configurationIssuer,selection);return issuers.observeCurrentDocumentIssuer(p.tenantId().toString(),issuerTarget);})
+                                    .map(i->{checked(m,mastersIssuer,selection);checked(c,configurationIssuer,selection);return new Observations(observed,l,s,i,m.until().isBefore(c.until())?m.until():c.until(),notices);})))));
                 });
             });
             });

@@ -27,6 +27,29 @@ class SdkDocumentOwnerReaderTest extends DocumentSnapshotFixtures {
         assertTrue(calls.get(1).endsWith(layout.toString()));assertTrue(calls.get(2).endsWith(source.toString()));
         assertTrue(calls.get(3).contains(tenant.toString()));
     }
+    @Test void orderedNoticeBodiesUseGenuineRevisionSdkAndOriginalBudget() {
+        var v=values();var one=UUID.randomUUID();var two=UUID.randomUUID();
+        v.layout().getDefinition().getSemanticDefinition().setLegalNotices(List.of(
+                new io.fireflysoftware.common.reference.master.data.sdk.model.DocumentLayoutNoticeReference()
+                        .masterReference(new io.fireflysoftware.common.reference.master.data.sdk.model.DocumentLayoutMasterReference().revisionId(one)),
+                new io.fireflysoftware.common.reference.master.data.sdk.model.DocumentLayoutNoticeReference()
+                        .masterReference(new io.fireflysoftware.common.reference.master.data.sdk.model.DocumentLayoutMasterReference().revisionId(two))));
+        var calls=new ArrayList<String>();var original=budget();
+        ExchangeFunction exchange=request->{
+            assertEquals(List.of("Bearer unit-token"),request.headers().getOrEmpty(HttpHeaders.AUTHORIZATION));
+            String path=request.url().getPath();calls.add(path);
+            Object body=path.contains("document-reference-current-observations")?v.current():path.contains("document-layout")?v.layout():
+                    path.endsWith(one.toString())?new io.fireflysoftware.common.reference.master.data.sdk.model.DocumentTemplateRevisionDTO().revisionId(one):
+                    path.endsWith(two.toString())?new io.fireflysoftware.common.reference.master.data.sdk.model.DocumentTemplateRevisionDTO().revisionId(two):
+                    path.contains("document-template-revisions")?v.source():v.issuer();
+            return Mono.just(ClientResponse.create(HttpStatus.OK).header("Content-Type","application/json").body(serialized(body)).build());
+        };
+        var result=reader(exchange,(owner,selection,b)->{assertSame(original,b);return Mono.just(new DocumentOwnerTokenProvider.AuthorizedToken(
+                "https://issuer.invalid","subject",tenant,clock.instant().plusSeconds(2),"unit-token"));})
+                .read(selection(v),original).block();
+        assertEquals(List.of(one,two),result.notices().stream().map(n->n.getRevisionId()).toList());
+        assertEquals(6,calls.size());assertTrue(calls.get(3).endsWith(one.toString()));assertTrue(calls.get(4).endsWith(two.toString()));
+    }
     private SdkDocumentOwnerReader reader(ExchangeFunction exchange,DocumentOwnerTokenProvider provider) {
         return new SdkDocumentOwnerReader(provider,java.net.URI.create("https://masters.invalid"),java.net.URI.create("https://config.invalid"),
                 "https://issuer.invalid","https://issuer.invalid",WebClient.builder().exchangeFunction(exchange).build(),clock);

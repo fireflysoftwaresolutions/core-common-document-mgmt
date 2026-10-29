@@ -36,6 +36,7 @@ import org.springframework.web.reactive.config.EnableWebFlux;
                 "org.fireflyframework.web"     // Scan common web library configurations
         }
 )
+@org.springframework.context.annotation.Import(io.fireflysoftware.documents.GovernedDocumentConfiguration.class)
 @EnableWebFlux
 @EnableR2dbcRepositories(
         basePackages = "io.fireflysoftware.commons.ecm.models.repositories"

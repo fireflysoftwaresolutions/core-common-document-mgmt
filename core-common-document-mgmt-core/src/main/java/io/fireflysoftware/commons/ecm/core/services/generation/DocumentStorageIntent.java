@@ -35,6 +35,8 @@ public final class DocumentStorageIntent {
         value.put("issuerNativeUntilEpochMillis",snapshot.issuerNativeUntil().toEpochMilli());value.put("issuerGeneration",snapshot.issuerEvidence().generation());
         value.put("issuerSourceGeneration",snapshot.issuerEvidence().sourceGeneration());value.put("issuerObservedAtEpochMillis",snapshot.issuerEvidence().observedAt().toEpochMilli());
         value.put("issuerEffectiveUntilEpochMillis",snapshot.issuerEvidence().effectiveUntil().toEpochMilli());
+        if(snapshot.issuerPresentation()!=null)value.put("issuerPresentation",snapshot.issuerPresentation());
+        if(!snapshot.notices().isEmpty())value.put("noticeSnapshots",snapshot.notices());
         value.put("actor",event.actor());value.put("policyRevision",event.policyRevision());value.put("processId",event.processId());
         value.put("correlationId",event.correlationId());value.put("causationId",event.causationId());
         value.put("occurredSeconds",event.occurredAt().getEpochSecond());value.put("occurredNanos",event.occurredAt().getNano());

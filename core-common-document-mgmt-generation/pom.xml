@@ -15,6 +15,14 @@
     <dependencies>
         <dependency>
             <groupId>io.fireflysoftware</groupId>
+            <artifactId>core-common-document-mgmt-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.fireflyframework</groupId>
+            <artifactId>fireflyframework-validators</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.fireflysoftware</groupId>
             <artifactId>core-common-document-mgmt-models</artifactId>
         </dependency>
         <dependency>
