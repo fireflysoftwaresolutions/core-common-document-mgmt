@@ -26,6 +26,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.data.r2dbc.config.EnableR2dbcAuditing;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.r2dbc.repository.config.EnableR2dbcRepositories;
 import org.springframework.web.reactive.config.EnableWebFlux;
 
@@ -39,7 +41,9 @@ import org.springframework.web.reactive.config.EnableWebFlux;
 @org.springframework.context.annotation.Import(io.fireflysoftware.documents.GovernedDocumentConfiguration.class)
 @EnableWebFlux
 @EnableR2dbcRepositories(
-        basePackages = "io.fireflysoftware.commons.ecm.models.repositories"
+        basePackages = "io.fireflysoftware.commons.ecm.models.repositories",
+        excludeFilters = @ComponentScan.Filter(type = FilterType.REGEX,
+                pattern = "io\\.fireflysoftware\\.commons\\.ecm\\.models\\.repositories\\.signing\\..*")
 )
 @EnableR2dbcAuditing
 @ConfigurationPropertiesScan
