@@ -134,7 +134,9 @@ public class DocumentController {
     @GetMapping("/{id}/download")
     @Operation(summary = "Download document content", description = "Downloads the content of a document")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Document content downloaded successfully"),
+            @ApiResponse(responseCode = "200", description = "Document content downloaded successfully",
+                    content = @Content(mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                            schema = @Schema(type = "string", format = "binary"))),
             @ApiResponse(responseCode = "404", description = "Document not found"),
             @ApiResponse(responseCode = "404", description = "Document content not available")
     })

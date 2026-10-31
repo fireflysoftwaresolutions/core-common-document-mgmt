@@ -28,4 +28,8 @@ public interface DocumentPort {
     IssuedDocument issue(IssueDocument command);
 
     IssuedDocument read(UUID documentId);
+    default reactor.core.publisher.Mono<io.fireflysoftware.commons.ecm.core.services.generation.DocumentGenerationCommitService.LocalCommit> issue(
+            GovernedIssueDocument command,org.fireflyframework.core.transaction.R2dbcOperationBudget original) {
+        return reactor.core.publisher.Mono.error(new IllegalStateException("Governed issuance capability unavailable"));
+    }
 }

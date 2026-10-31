@@ -23,6 +23,10 @@
         <!-- Internal modules -->
         <dependency>
             <groupId>io.fireflysoftware</groupId>
+            <artifactId>core-common-document-mgmt-generation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.fireflysoftware</groupId>
             <artifactId>core-common-document-mgmt-core</artifactId>
         </dependency>
         <dependency>

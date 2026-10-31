@@ -40,6 +40,12 @@ A rendered contract for Ada Lovelace and agreement `10000000-0000-4000-8000-0000
 
 A comprehensive, enterprise-grade document management microservice built on Spring Boot WebFlux with reactive programming principles. This microservice is a core component of the **Firefly OpenCore Platform** - an open-source core banking solution that provides advanced document lifecycle management, digital signature capabilities, and seamless integration with the Firefly fireflyframework-ecm-core framework for financial institutions.
 
+## Signing preparation and dispatch boundary
+
+The internal signing preparation milestone is described in [the preparation contract](docs/SIGNING_PREPARATION.md). It captures a scoped, immutable candidate intent and exact selected-version bytes and returns only local `PREPARED`. It neither sends an envelope nor proves that the bytes were historically approved, signed, or legally voided. The source now pairs reservation and prepared-state writes with the existing canonical immutable audit appender in one verified owner transaction; actual database/ACL/atomicity acceptance remains a separate gate. The trusted resource-tenant binding adapter and application composition are deliberately not installed by default.
+
+Legacy initiation, cancellation, notification, and reminder operations now fail closed with a typed integration-unavailable error before repository or provider calls. The existing HTTP notification and reminder routes declare and return 503 through the shared error handler. Existing request identifiers are not adopted as provider envelope or recipient identifiers. Generated SDK and canonical OpenAPI resources remain unchanged and are pending regeneration from the genuine running producer; their previous signing-operation descriptions do not qualify this change.
+
 ## Overview
 
 The Document Management Microservice provides comprehensive Enterprise Content Management (ECM) capabilities through seamless integration with the fireflyframework-ecm-core library. It offers flexible deployment options from standalone document metadata management to full-featured ECM with cloud storage and digital signatures.
