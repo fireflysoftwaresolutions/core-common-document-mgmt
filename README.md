@@ -48,7 +48,7 @@ Legacy initiation, cancellation, notification, and reminder operations now fail 
 
 ## Content upload and deletion
 
-The separate managed evidence operation stores bounded actual bytes and immutable custody with paired canonical audit in one Document owner transaction. See [managed evidence custody](docs/MANAGED_EVIDENCE_CUSTODY.md) for its current authority, original-action replay, deployment requirements, qualification of 373 source cases and 13 native cases, and remaining reader/loan-association work.
+The separate managed evidence operation stores bounded actual bytes and immutable custody with paired canonical audit in one Document owner transaction. Its scoped reader revalidates the original signed party and current read authority, verifies actual stored bytes and the completed canonical pair, and returns the original receipt or bounded content. See [managed evidence custody](docs/MANAGED_EVIDENCE_CUSTODY.md) for deployment requirements, qualification of 385 source cases and 18 native cases, and the remaining generated-client HTTP and Loan-association integration.
 
 `DocumentService.uploadContent` requires an existing document and a configured `DocumentContentPort`. It accepts nonempty content up to 10 MiB, releases the input buffers, and records the SHA-256 checksum and actual byte length of the content sent to the adapter. Metadata is saved only after the adapter returns a nonblank storage reference. Missing content, oversized content, or a missing storage reference fails the operation.
 

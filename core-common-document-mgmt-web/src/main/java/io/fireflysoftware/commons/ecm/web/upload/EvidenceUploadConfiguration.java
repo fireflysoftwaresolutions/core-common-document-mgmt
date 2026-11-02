@@ -46,6 +46,15 @@ public class EvidenceUploadConfiguration implements WebFluxConfigurer {
         var manager=new R2dbcTransactionManager(factory);
         return new SpringDataEvidenceUploadStoreImpl(new EvidenceUploadAuditRootImpl(BoundedR2dbcResources.verify(factory,client,template,manager),client,template,manager,new CleanupPolicy(Duration.ofSeconds(1),Duration.ofSeconds(1)),authority,Clock.systemUTC(),System::nanoTime));
     }
+    @Bean AuthenticatedEvidenceReadAdmissionImpl evidenceReadAdmission(EvidenceUploadSettings settings,ObjectProvider<PolicyEvaluationPort> policies){
+        var policy=policies.getIfUnique();if(policy==null)throw new IllegalStateException("Exactly one current document read policy evaluator required");
+        return new AuthenticatedEvidenceReadAdmissionImpl(settings,policy,Clock.systemUTC(),System::nanoTime);
+    }
+    @Bean EvidenceReadStore evidenceReadStore(@Qualifier("connectionFactory") ConnectionFactory business,AuthenticatedEvidenceReadAdmissionImpl authority){
+        var factory=new OwnedLeaseConnectionFactory(business);var client=DatabaseClient.create(factory);
+        var template=new R2dbcEntityTemplate(client,new DefaultReactiveDataAccessStrategy(PostgresDialect.INSTANCE,DocumentEvidenceMapping.converters()));var manager=new R2dbcTransactionManager(factory);
+        return new SpringDataEvidenceReaderImpl(BoundedR2dbcResources.verify(factory,client,template,manager),client,template,manager,new CleanupPolicy(Duration.ofSeconds(1),Duration.ofSeconds(1)),authority,Clock.systemUTC(),System::nanoTime);
+    }
     @Bean @Order(-50) WebFilter documentEvidenceVerifiedSubject(ReactiveJwtDecoder decoder,
             @Qualifier("fireflyJwtAuthenticationConverter") Converter<Jwt,Mono<AbstractAuthenticationToken>> projection,EvidenceUploadSettings settings){
         return new VerifiedDocumentEvidenceJwtWebFilterImpl(decoder,projection,settings.issuer(),settings.platformTenant(),"/api/v1/managed-document-evidence");

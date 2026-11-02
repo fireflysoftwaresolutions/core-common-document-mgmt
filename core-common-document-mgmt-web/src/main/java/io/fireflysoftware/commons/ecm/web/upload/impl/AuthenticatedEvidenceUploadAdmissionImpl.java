@@ -33,13 +33,15 @@ public final class AuthenticatedEvidenceUploadAdmissionImpl implements EvidenceU
         final UploadedEvidenceIntent intent;try{intent=UploadedEvidenceIntent.capture(request);}catch(IllegalArgumentException invalid){return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,"Exact bounded evidence and original action required"));}
         return Mono.deferContextual(context->{if(context.hasKey(executionKey))return Mono.error(denied());
             Instant observed=clock.instant();long before=nanos.getAsLong();
-            return authentication().timeout(Duration.ofSeconds(5)).flatMap(auth->{SecurityPrincipal principal=principal(auth,intent);Instant until=observed.plusSeconds(5);
+            return authentication().timeout(Duration.ofSeconds(5)).map(auth->{SecurityPrincipal principal=principal(auth,intent);Instant until=observed.plusSeconds(5);
                 if(auth.getToken().getExpiresAt().isBefore(until))until=auth.getToken().getExpiresAt();if(settings.notAfter().isBefore(until))until=settings.notAfter();
-                var execution=new ExecutionImpl(intent,auth,principal,observed,before,until);
-                return Mono.using(()->execution,held->Mono.defer(()->delegate.store(request)).switchIfEmpty(Mono.error(unavailable()))
-                    .contextWrite(current->current.put(executionKey,held)),held->held.active.set(false),true).map(value->{
-                    try{window(execution);}catch(RuntimeException expired){throw new EvidenceUploadFailure(intent.actionId(),EvidenceUploadFailure.Outcome.COMMITTED_RESPONSE_UNAVAILABLE);}return value;});
-            });
+                return new ExecutionImpl(intent,auth,principal,observed,before,until);
+            }).onErrorMap(error->{
+                if(error instanceof ResponseStatusException status&&Set.of(400,401,403).contains(status.getStatusCode().value()))return error;
+                return new EvidenceUploadFailure(intent.actionId(),EvidenceUploadFailure.Outcome.REFUSED);
+            }).flatMap(execution->Mono.using(()->execution,held->Mono.defer(()->delegate.store(request)).switchIfEmpty(Mono.error(unavailable()))
+                .contextWrite(current->current.put(executionKey,held)),held->held.active.set(false),true).map(value->{
+                    try{window(execution);}catch(RuntimeException expired){throw new EvidenceUploadFailure(intent.actionId(),EvidenceUploadFailure.Outcome.COMMITTED_RESPONSE_UNAVAILABLE);}return value;}));
         });
     }
     @Override public Mono<EvidenceUploadAdmission.Permit> requireCurrent(UploadedEvidenceIntent intent){return Mono.deferContextual(context->{

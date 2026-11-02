@@ -36,13 +36,18 @@ public class EvidenceUploadController {
         @ApiResponse(responseCode="403",description="Current signed party or owner authorization refused",content={}),
         @ApiResponse(responseCode="413",description="Bounded JSON envelope exceeded",content={}),
         @ApiResponse(responseCode="409",description="Original action conflicts with different content or metadata; retained custody is unchanged",content=@Content(schema=@Schema(implementation=EvidenceUploadError.class))),
-        @ApiResponse(responseCode="503",description="REFUSED after proven rollback, OUTCOME_UNKNOWN after uncertain completion, or COMMITTED_RESPONSE_UNAVAILABLE; recover only the same original action",content=@Content(schema=@Schema(implementation=EvidenceUploadError.class)))})
+        @ApiResponse(responseCode="503",description="REFUSED before mutation dispatch or after proven rollback, OUTCOME_UNKNOWN after uncertain completion, or COMMITTED_RESPONSE_UNAVAILABLE; recover only the same original action",content=@Content(schema=@Schema(implementation=EvidenceUploadError.class)))})
     public Mono<ResponseEntity<EvidenceUploadReceipt>> store(@PathVariable UUID applicationId,@PathVariable UUID actionId,@Valid @RequestBody EvidenceUploadRequest request){return Mono.defer(()->{
         if(request==null||!applicationId.equals(request.applicationId())||!actionId.equals(request.actionId()))return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,"Exact original application and action required"));
-        var authority=authorities.getIfUnique();var owner=owners.getIfUnique();
+        final AuthenticatedEvidenceUploadAdmissionImpl authority;final EvidenceUploadStore owner;
+        try{authority=authorities.getIfUnique();owner=owners.getIfUnique();}catch(RuntimeException unavailable){return Mono.error(new EvidenceUploadFailure(actionId,EvidenceUploadFailure.Outcome.REFUSED));}
         if(authority==null||owner==null)return Mono.error(new EvidenceUploadFailure(actionId,EvidenceUploadFailure.Outcome.REFUSED));
         return authority.invoke(request,owner).map(receipt->ResponseEntity.status(receipt.replayed()?HttpStatus.OK:HttpStatus.CREATED).body(receipt))
-            .onErrorMap(ResponseStatusException.class,error->error.getStatusCode().value()==503?new EvidenceUploadFailure(actionId,EvidenceUploadFailure.Outcome.OUTCOME_UNKNOWN):error);
+            .onErrorMap(error->{
+                if(error instanceof EvidenceUploadFailure||error instanceof EvidenceUploadConflict)return error;
+                if(error instanceof ResponseStatusException status&&java.util.Set.of(400,401,403).contains(status.getStatusCode().value()))return error;
+                return new EvidenceUploadFailure(actionId,EvidenceUploadFailure.Outcome.OUTCOME_UNKNOWN);
+            });
     });}
     @ExceptionHandler(EvidenceUploadFailure.class)
     public ResponseEntity<EvidenceUploadError> unavailable(EvidenceUploadFailure error){return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new EvidenceUploadError(error.actionId(),error.getCode(),EvidenceUploadError.Outcome.valueOf(error.outcome().name()),"SAME_ACTION_OBSERVE_OR_EXACT_REPLAY"));}

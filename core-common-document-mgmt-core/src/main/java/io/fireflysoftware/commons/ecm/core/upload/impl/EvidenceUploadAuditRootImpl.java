@@ -51,9 +51,10 @@ public final class EvidenceUploadAuditRootImpl {
         long observedNanos=nanos.getAsLong();Instant observedAt=clock.instant();
         var initial=R2dbcOperationBudget.observed(observedAt,observedAt.plusSeconds(5),observedNanos,Duration.ofSeconds(5),clock,nanos);
         return authority.requireCurrent(intent).switchIfEmpty(Mono.error(unavailable())).timeout(initial.remaining())
-            .onErrorMap(java.util.concurrent.TimeoutException.class,error->new EvidenceUploadFailure(intent.actionId(),EvidenceUploadFailure.Outcome.REFUSED)).flatMap(permit->{
-            if(!intent.actionId().equals(permit.actionId()) || !intent.digest().equals(permit.intentDigest()) || !intent.partyId().equals(permit.partyId()) || !intent.applicationId().equals(permit.applicationId()))return Mono.error(unavailable());
-            var budget=R2dbcOperationBudget.observed(permit.observedAt(),permit.notAfter(),permit.observedNanos(),Duration.ofSeconds(5),clock,nanos).intersect(initial);
+            .onErrorMap(error->preDispatchFailure(intent.actionId(),error)).flatMap(permit->{
+            if(!intent.actionId().equals(permit.actionId()) || !intent.digest().equals(permit.intentDigest()) || !intent.partyId().equals(permit.partyId()) || !intent.applicationId().equals(permit.applicationId()))return Mono.error(new EvidenceUploadFailure(intent.actionId(),EvidenceUploadFailure.Outcome.REFUSED));
+            final R2dbcOperationBudget budget;
+            try{budget=R2dbcOperationBudget.observed(permit.observedAt(),permit.notAfter(),permit.observedNanos(),Duration.ofSeconds(5),clock,nanos).intersect(initial);}catch(RuntimeException expired){return Mono.error(new EvidenceUploadFailure(intent.actionId(),EvidenceUploadFailure.Outcome.REFUSED));}
             var definition=new DefaultTransactionDefinition();definition.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
             return root.execute(budget,definition,scope->resources.factory().requireBoundScope(resources,scope)
                 .then(authority.revalidate(permit)).then(Mono.defer(()->prepare.apply(permit))).switchIfEmpty(Mono.error(unavailable()))
@@ -94,5 +95,9 @@ public final class EvidenceUploadAuditRootImpl {
                 }).flatMap(value->Mono.defer(()->authority.revalidate(permit).then(Mono.fromCallable(()->{budget.remaining();return value;})).timeout(budget.remaining()))
                     .onErrorMap(error->new EvidenceUploadFailure(intent.actionId(),EvidenceUploadFailure.Outcome.COMMITTED_RESPONSE_UNAVAILABLE)));
         });});}
+    private static Throwable preDispatchFailure(UUID action,Throwable error){
+        if(error instanceof org.springframework.web.server.ResponseStatusException status&&Set.of(400,401,403).contains(status.getStatusCode().value()))return error;
+        return new EvidenceUploadFailure(action,EvidenceUploadFailure.Outcome.REFUSED);
+    }
     private static IllegalStateException unavailable(){return new IllegalStateException("Exact paired document evidence audit and completed owned root required");}
 }

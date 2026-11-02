@@ -1724,6 +1724,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/SignatureProviderDTO"
   /api/v1/managed-document-evidence/applications/{applicationId}/actions/{actionId}:
+    get:
+      tags:
+      - evidence-read-controller
+      summary: Observe the original immutable content receipt under current signed
+        read authority
+      operationId: observeManagedDocumentEvidence
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: actionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-Idempotency-Key
+        in: header
+        description: "Optional retry key for scoped POST, PUT, PATCH, and DELETE response\
+          \ reuse. Safe methods ignore it. Reuse requires configured trusted identity\
+          \ and namespace; changed input returns 409. Business effects require durable\
+          \ application idempotency."
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Existing original content and canonical pair verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "401":
+          description: Native bearer authentication refused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "403":
+          description: Current read/application/party authority refused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "503":
+          description: Current observation unavailable; no upload or replacement action
+            was dispatched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadError"
+      security:
+      - documentEvidenceBearer: []
     post:
       tags:
       - evidence-upload-controller
@@ -1794,9 +1850,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/EvidenceUploadError"
         "503":
-          description: "REFUSED after proven rollback, OUTCOME_UNKNOWN after uncertain\
-            \ completion, or COMMITTED_RESPONSE_UNAVAILABLE; recover only the same\
-            \ original action"
+          description: "REFUSED before mutation dispatch or after proven rollback,\
+            \ OUTCOME_UNKNOWN after uncertain completion, or COMMITTED_RESPONSE_UNAVAILABLE;\
+            \ recover only the same original action"
           content:
             application/json:
               schema:
@@ -3001,6 +3057,74 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/PaginationResponseDocumentDTO"
+  /api/v1/managed-document-evidence/applications/{applicationId}/actions/{actionId}/content:
+    get:
+      tags:
+      - evidence-read-controller
+      summary: Read actual bounded stored bytes after current authority and canonical-pair
+        verification
+      operationId: readManagedDocumentEvidenceContent
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: actionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-Idempotency-Key
+        in: header
+        description: "Optional retry key for scoped POST, PUT, PATCH, and DELETE response\
+          \ reuse. Safe methods ignore it. Reuse requires configured trusted identity\
+          \ and namespace; changed input returns 409. Business effects require durable\
+          \ application idempotency."
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Actual original PostgreSQL content; consumers must independently
+            hash the returned bytes
+          headers:
+            X-Evidence-Content-SHA256:
+              description: SHA256 of actual returned content
+              style: simple
+              schema:
+                pattern: "[0-9a-f]{64}"
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Native bearer authentication refused
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Current read/application/party authority refused
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "503":
+          description: Current bytes or canonical pair unavailable; no upload or replacement
+            action was dispatched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadError"
+      security:
+      - documentEvidenceBearer: []
   /api/v1/folders/{id}/documents:
     get:
       tags:
@@ -4311,6 +4435,7 @@ components:
           - CONFLICT
           - OUTCOME_UNKNOWN
           - COMMITTED_RESPONSE_UNAVAILABLE
+          - OBSERVATION_UNAVAILABLE
         recovery:
           type: string
     DocumentVersionDTO:
