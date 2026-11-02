@@ -56,6 +56,12 @@ If content deletion fails, the error propagates and the document metadata is ret
 
 The owner regression suite covers checksum/length persistence, failed deletion, pooled-buffer release, and invalid upload inputs. Its controlled audit fixture is copied unchanged from `fireflyframework/fireflyframework-jafly` commit `a101a15b3ded21c762eac86f605cda66d9416b0a`, `modules/r2dbc/src/test/java/org/fireflyframework/core/audit/AuditTestFixture.java` (SHA-256 `925a5b0feb8735fd9a5a52a668adf1e6224208c70b5d1dd22cd1838180a62d36`). It is test-only and does not establish PostgreSQL or provider acceptance.
 
+## PostgreSQL technical cache
+
+The Web runtime includes the BOM-managed `fireflyframework-cache-postgres` provider. Configure `firefly.cache.default-cache-type=POSTGRES`, `firefly.cache.postgres.enabled=true`, and explicit host, port, database, username, password, SSL mode, schema, and cache-table properties under `firefly.cache.postgres`. Provision a separate technical database, restricted login, schema, table, and index; set `auto-create-schema=false`. Keep its connection pool separate from the document business pool, bound pool sizes and acquisition/connection timeouts, and supply the password through deployment secret configuration. The business database is not a fallback cache.
+
+The managed-document API continues to use its Core business connection factory for durable custody, metadata, action receipts, and audit records. The technical cache uses its own connection factory and cannot serve as authoritative evidence of document custody or a completed lending-document association. Those operations require the owning action receipts and recovery checks.
+
 ## Overview
 
 The Document Management Microservice provides comprehensive Enterprise Content Management (ECM) capabilities through seamless integration with the fireflyframework-ecm-core library. It offers flexible deployment options from standalone document metadata management to full-featured ECM with cloud storage and digital signatures.
