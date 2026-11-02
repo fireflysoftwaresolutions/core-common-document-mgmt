@@ -68,6 +68,9 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 firefly:
+  openapi:
+    instant-scalar:
+      enabled: true
   # ECM Integration Configuration - Microservice-specific business logic defaults
   # These properties provide default values for business logic when not specified in API requests
   # Separate from library-ecm-core provider configuration (firefly.ecm.document-content, firefly.ecm.signature)

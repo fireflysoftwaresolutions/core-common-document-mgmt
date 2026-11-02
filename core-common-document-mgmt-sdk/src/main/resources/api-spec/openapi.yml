@@ -4416,8 +4416,7 @@ components:
         documentTypeCode:
           type: string
         storedAt:
-          type: string
-          format: date-time
+          $ref: "#/components/schemas/FireflyInstant"
         replayed:
           type: boolean
     EvidenceUploadError:
@@ -4752,6 +4751,9 @@ components:
           format: int32
       description: Represents a paginated response containing a list of items and
         pagination metadata.
+    FireflyInstant:
+      type: string
+      format: date-time
   securitySchemes:
     documentEvidenceBearer:
       type: http
