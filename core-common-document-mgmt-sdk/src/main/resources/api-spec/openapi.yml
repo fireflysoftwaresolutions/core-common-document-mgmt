@@ -1519,6 +1519,13 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/SignatureRequestDTO"
+        "503":
+          description: Trusted signing dispatch bridge unavailable; legacy association
+            is unadopted
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SignatureRequestDTO"
   /api/v1/signature-requests/{id}/remind:
     post:
       tags:
@@ -1552,6 +1559,13 @@ paths:
                 $ref: "#/components/schemas/SignatureRequestDTO"
         "404":
           description: Signature request not found
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SignatureRequestDTO"
+        "503":
+          description: Trusted signing dispatch bridge unavailable; legacy association
+            is unadopted
           content:
             '*/*':
               schema:
@@ -1709,6 +1723,87 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/SignatureProviderDTO"
+  /api/v1/managed-document-evidence/applications/{applicationId}/actions/{actionId}:
+    post:
+      tags:
+      - evidence-upload-controller
+      summary: Store bounded original evidence content under current application and
+        party authority
+      operationId: storeManagedDocumentEvidence
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: actionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvidenceUploadRequest"
+        required: true
+      responses:
+        "201":
+          description: Original content and pending custody stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "200":
+          description: Exact original action and content replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "400":
+          description: "Invalid path binding, metadata or decoded content bound"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "401":
+          description: Native bearer authentication refused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "403":
+          description: Current signed party or owner authorization refused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "413":
+          description: Bounded JSON envelope exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadReceipt"
+        "409":
+          description: Original action conflicts with different content or metadata;
+            retained custody is unchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadError"
+        "503":
+          description: "REFUSED after proven rollback, OUTCOME_UNKNOWN after uncertain\
+            \ completion, or COMMITTED_RESPONSE_UNAVAILABLE; recover only the same\
+            \ original action"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadError"
+      security:
+      - documentEvidenceBearer: []
+      x-disable-idempotency: true
   /api/v1/folders:
     get:
       tags:
@@ -3934,6 +4029,7 @@ components:
             \ and display in the ECM provider interface. Valid values: Signer, Approver,\
             \ Reviewer, Witness, Notary, CC"
           example: Approver
+          default: Signer
           enum:
           - Signer
           - Approver
@@ -3941,7 +4037,6 @@ components:
           - Witness
           - Notary
           - CC
-          default: Signer
         signatureRequired:
           type: boolean
           description: "Whether this signature is required for document completion.\
@@ -3955,6 +4050,7 @@ components:
             \ how the signer must verify their identity before accessing the document.\
             \ Valid values: EMAIL, SMS, PHONE, ACCESS_CODE, ID_CHECK, NONE"
           example: EMAIL
+          default: EMAIL
           enum:
           - EMAIL
           - SMS
@@ -3962,7 +4058,6 @@ components:
           - ACCESS_CODE
           - ID_CHECK
           - NONE
-          default: EMAIL
         externalSignerId:
           type: string
           description: "External signer ID assigned by the ECM provider (e.g., DocuSign\
@@ -4126,6 +4221,98 @@ components:
           description: Version number for optimistic locking
           format: int64
       description: Document metadata data transfer object
+    EvidenceUploadRequest:
+      required:
+      - actionId
+      - applicationId
+      - content
+      - documentTypeCode
+      - fileName
+      - mediaType
+      - partyId
+      type: object
+      properties:
+        actionId:
+          type: string
+          format: uuid
+        applicationId:
+          type: string
+          format: uuid
+        partyId:
+          type: string
+          format: uuid
+        fileName:
+          maxLength: 255
+          minLength: 0
+          type: string
+        mediaType:
+          maxLength: 100
+          minLength: 0
+          type: string
+        documentTypeCode:
+          maxLength: 50
+          minLength: 0
+          type: string
+        content:
+          maxLength: 2796204
+          minLength: 4
+          type: string
+          description: Base64 of 1 through 2097152 decoded content bytes; the JSON
+            envelope is bounded to 3145728 bytes
+          format: byte
+    EvidenceUploadReceipt:
+      type: object
+      properties:
+        actionId:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        applicationId:
+          type: string
+          format: uuid
+        partyId:
+          type: string
+          format: uuid
+        resourceTenantId:
+          type: string
+          format: uuid
+        contentDigest:
+          type: string
+        contentLength:
+          type: integer
+          format: int64
+        intentDigest:
+          type: string
+        fileName:
+          type: string
+        mediaType:
+          type: string
+        documentTypeCode:
+          type: string
+        storedAt:
+          type: string
+          format: date-time
+        replayed:
+          type: boolean
+    EvidenceUploadError:
+      type: object
+      properties:
+        actionId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        outcome:
+          type: string
+          enum:
+          - REFUSED
+          - CONFLICT
+          - OUTCOME_UNKNOWN
+          - COMMITTED_RESPONSE_UNAVAILABLE
+        recovery:
+          type: string
     DocumentVersionDTO:
       type: object
       properties:
@@ -4440,3 +4627,8 @@ components:
           format: int32
       description: Represents a paginated response containing a list of items and
         pagination metadata.
+  securitySchemes:
+    documentEvidenceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

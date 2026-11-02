@@ -46,6 +46,11 @@
 
         <dependency>
             <groupId>org.fireflyframework</groupId>
+            <artifactId>fireflyframework-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.fireflyframework</groupId>
             <artifactId>fireflyframework-r2dbc</artifactId>
         </dependency>
         <dependency>
