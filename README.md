@@ -46,6 +46,14 @@ The internal signing preparation milestone is described in [the preparation cont
 
 Legacy initiation, cancellation, notification, and reminder operations now fail closed with a typed integration-unavailable error before repository or provider calls. The existing HTTP notification and reminder routes declare and return 503 through the shared error handler. Existing request identifiers are not adopted as provider envelope or recipient identifiers. Generated SDK and canonical OpenAPI resources remain unchanged and are pending regeneration from the genuine running producer; their previous signing-operation descriptions do not qualify this change.
 
+## Content upload and deletion
+
+`DocumentService.uploadContent` requires an existing document and a configured `DocumentContentPort`. It accepts nonempty content up to 10 MiB, releases the input buffers, and records the SHA-256 checksum and actual byte length of the content sent to the adapter. Metadata is saved only after the adapter returns a nonblank storage reference. Missing content, oversized content, or a missing storage reference fails the operation.
+
+If content deletion fails, the error propagates and the document metadata is retained for investigation and recovery. Search indexing remains a best-effort secondary operation. The external content store and metadata repository do not share a transaction: these guarantees do not establish atomic custody, provider readback, or a completed lending-document association. Those workflows require their own durable action and recovery handling.
+
+The owner regression suite covers checksum/length persistence, failed deletion, pooled-buffer release, and invalid upload inputs. Its controlled audit fixture is copied unchanged from `fireflyframework/fireflyframework-jafly` commit `a101a15b3ded21c762eac86f605cda66d9416b0a`, `modules/r2dbc/src/test/java/org/fireflyframework/core/audit/AuditTestFixture.java` (SHA-256 `925a5b0feb8735fd9a5a52a668adf1e6224208c70b5d1dd22cd1838180a62d36`). It is test-only and does not establish PostgreSQL or provider acceptance.
+
 ## Overview
 
 The Document Management Microservice provides comprehensive Enterprise Content Management (ECM) capabilities through seamless integration with the fireflyframework-ecm-core library. It offers flexible deployment options from standalone document metadata management to full-featured ECM with cloud storage and digital signatures.
@@ -395,9 +403,13 @@ Comprehensive documentation is available in the [`docs/`](./docs/) directory:
 
 ### Running Tests
 
+Run from the repository root. The signing source/schema tests require the owner source location explicitly:
+
 ```bash
-mvn test
+mvn -Dcore.signing.source="$PWD" test
 ```
+
+This command requires the declared dependencies to be available. The hosted source qualification instead builds its required SDK dependencies from pinned original producers in a fresh source reactor; it does not publish or install replacement artifacts under existing versions.
 
 ### Building Docker Image
 
