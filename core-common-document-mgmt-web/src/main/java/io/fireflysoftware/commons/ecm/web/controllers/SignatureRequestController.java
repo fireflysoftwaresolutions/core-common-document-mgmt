@@ -113,7 +113,8 @@ public class SignatureRequestController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Signature request notification sent successfully",
                     content = @Content(schema = @Schema(implementation = SignatureRequestDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Signature request not found")
+            @ApiResponse(responseCode = "404", description = "Signature request not found"),
+            @ApiResponse(responseCode = "503", description = "Trusted signing dispatch bridge unavailable; legacy association is unadopted")
     })
     public Mono<SignatureRequestDTO> sendSignatureRequest(
             @Parameter(description = "ID of the signature request to send") @PathVariable UUID id) {
@@ -125,7 +126,8 @@ public class SignatureRequestController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Signature request reminder sent successfully",
                     content = @Content(schema = @Schema(implementation = SignatureRequestDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Signature request not found")
+            @ApiResponse(responseCode = "404", description = "Signature request not found"),
+            @ApiResponse(responseCode = "503", description = "Trusted signing dispatch bridge unavailable; legacy association is unadopted")
     })
     public Mono<SignatureRequestDTO> sendSignatureRequestReminder(
             @Parameter(description = "ID of the signature request to remind") @PathVariable UUID id) {

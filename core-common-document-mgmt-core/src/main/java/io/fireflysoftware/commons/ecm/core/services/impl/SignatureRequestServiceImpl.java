@@ -130,49 +130,15 @@ public class SignatureRequestServiceImpl implements SignatureRequestService {
     }
 
     @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public Mono<SignatureRequestDTO> sendNotification(UUID id) {
-        return repository.findById(id)
-                .switchIfEmpty(Mono.error(new RuntimeException("Signature request not found with ID: " + id)))
-                .flatMap(entity -> ecmPortProvider.getSignatureRequestPort()
-                        .map(port -> port.resendNotification(id)
-                                .onErrorResume(err -> {
-                                    // If provider call fails, continue with local tracking
-                                    return Mono.empty();
-                                })
-                                .then(Mono.defer(() -> {
-                                    entity.setNotificationSent(true);
-                                    entity.setNotificationSentAt(LocalDateTime.now());
-                                    return repository.save(entity);
-                                })))
-                        .orElseGet(() -> {
-                            // No provider configured, track locally
-                            entity.setNotificationSent(true);
-                            entity.setNotificationSentAt(LocalDateTime.now());
-                            return repository.save(entity);
-                        })
-                )
-                .map(mapper::toDTO);
+        return Mono.error(new io.fireflysoftware.commons.ecm.core.signing.SigningIntegrationUnavailableException());
     }
 
     @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public Mono<SignatureRequestDTO> sendReminder(UUID id) {
-        return repository.findById(id)
-                .switchIfEmpty(Mono.error(new RuntimeException("Signature request not found with ID: " + id)))
-                .flatMap(entity -> ecmPortProvider.getSignatureRequestPort()
-                        .map(port -> port.resendNotification(id)
-                                .onErrorResume(err -> Mono.empty())
-                                .then(Mono.defer(() -> {
-                                    entity.setReminderSent(true);
-                                    entity.setReminderSentAt(LocalDateTime.now());
-                                    return repository.save(entity);
-                                })))
-                        .orElseGet(() -> {
-                            entity.setReminderSent(true);
-                            entity.setReminderSentAt(LocalDateTime.now());
-                            return repository.save(entity);
-                        })
-                )
-                .map(mapper::toDTO);
+        return Mono.error(new io.fireflysoftware.commons.ecm.core.signing.SigningIntegrationUnavailableException());
     }
 
     @Override

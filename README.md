@@ -40,6 +40,28 @@ A rendered contract for Ada Lovelace and agreement `10000000-0000-4000-8000-0000
 
 A comprehensive, enterprise-grade document management microservice built on Spring Boot WebFlux with reactive programming principles. This microservice is a core component of the **Firefly OpenCore Platform** - an open-source core banking solution that provides advanced document lifecycle management, digital signature capabilities, and seamless integration with the Firefly fireflyframework-ecm-core framework for financial institutions.
 
+## Signing preparation and dispatch boundary
+
+The internal signing preparation milestone is described in [the preparation contract](docs/SIGNING_PREPARATION.md). It captures a scoped, immutable candidate intent and exact selected-version bytes and returns only local `PREPARED`. It neither sends an envelope nor proves that the bytes were historically approved, signed, or legally voided. The source now pairs reservation and prepared-state writes with the existing canonical immutable audit appender in one verified owner transaction; actual database/ACL/atomicity acceptance remains a separate gate. The trusted resource-tenant binding adapter and application composition are deliberately not installed by default.
+
+Legacy initiation, cancellation, notification, and reminder operations now fail closed with a typed integration-unavailable error before repository or provider calls. The existing HTTP notification and reminder routes declare and return 503 through the shared error handler. Existing request identifiers are not adopted as provider envelope or recipient identifiers. Canonical SDK resources are regenerated from the complete genuine controller producer; generated-contract compilation does not establish signing provider or native Main acceptance.
+
+## Content upload and deletion
+
+The separate managed evidence operation stores bounded actual bytes and immutable custody with paired canonical audit in one Document owner transaction. Its scoped reader revalidates the original signed party and current read authority, verifies actual stored bytes and the completed canonical pair, and returns the original receipt or bounded content. See [managed evidence custody](docs/MANAGED_EVIDENCE_CUSTODY.md) for deployment requirements, qualification of 385 source cases and 18 native cases, and the remaining generated-client HTTP and Loan-association integration. The owner-generated storedAt contract now preserves java.time.Instant through the published scalar; consumers must not infer a timezone from LocalDateTime.
+
+`DocumentService.uploadContent` requires an existing document and a configured `DocumentContentPort`. It accepts nonempty content up to 10 MiB, releases the input buffers, and records the SHA-256 checksum and actual byte length of the content sent to the adapter. Metadata is saved only after the adapter returns a nonblank storage reference. Missing content, oversized content, or a missing storage reference fails the operation.
+
+If content deletion fails, the error propagates and the document metadata is retained for investigation and recovery. Search indexing remains a best-effort secondary operation. The external content store and metadata repository do not share a transaction: these guarantees do not establish atomic custody, provider readback, or a completed lending-document association. Those workflows require their own durable action and recovery handling.
+
+The owner regression suite covers checksum/length persistence, failed deletion, pooled-buffer release, and invalid upload inputs. Its controlled audit fixture is copied unchanged from `fireflyframework/fireflyframework-jafly` commit `a101a15b3ded21c762eac86f605cda66d9416b0a`, `modules/r2dbc/src/test/java/org/fireflyframework/core/audit/AuditTestFixture.java` (SHA-256 `925a5b0feb8735fd9a5a52a668adf1e6224208c70b5d1dd22cd1838180a62d36`). It is test-only and does not establish PostgreSQL or provider acceptance.
+
+## PostgreSQL technical cache
+
+The Web runtime includes the BOM-managed `fireflyframework-cache-postgres` provider. Configure `firefly.cache.default-cache-type=POSTGRES`, `firefly.cache.postgres.enabled=true`, and explicit host, port, database, username, password, SSL mode, schema, and cache-table properties under `firefly.cache.postgres`. Provision a separate technical database, restricted login, schema, table, and index; set `auto-create-schema=false`. Keep its connection pool separate from the document business pool, bound pool sizes and acquisition/connection timeouts, and supply the password through deployment secret configuration. The business database is not a fallback cache.
+
+The managed-document API continues to use its Core business connection factory for durable custody, metadata, action receipts, and audit records. The technical cache uses its own connection factory and cannot serve as authoritative evidence of document custody or a completed lending-document association. Those operations require the owning action receipts and recovery checks.
+
 ## Overview
 
 The Document Management Microservice provides comprehensive Enterprise Content Management (ECM) capabilities through seamless integration with the fireflyframework-ecm-core library. It offers flexible deployment options from standalone document metadata management to full-featured ECM with cloud storage and digital signatures.
@@ -389,9 +411,13 @@ Comprehensive documentation is available in the [`docs/`](./docs/) directory:
 
 ### Running Tests
 
+Run from the repository root. The signing source/schema tests require the owner source location explicitly:
+
 ```bash
-mvn test
+mvn -Dcore.signing.source="$PWD" test
 ```
+
+This command requires the declared dependencies to be available. The hosted source qualification instead builds its required SDK dependencies from pinned original producers in a fresh source reactor; it does not publish or install replacement artifacts under existing versions.
 
 ### Building Docker Image
 

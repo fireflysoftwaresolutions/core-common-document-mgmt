@@ -34,12 +34,16 @@ import org.fireflyframework.ecm.port.document.DocumentVersionPort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import java.util.UUID;
+import java.util.HexFormat;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 /**
  * Implementation of the DocumentService interface.
  * Provides comprehensive document management with ECM port integration.
@@ -48,6 +52,8 @@ import java.util.UUID;
 @Transactional
 @Slf4j
 public class DocumentServiceImpl implements DocumentService {
+
+    public static final int MAX_UPLOAD_CONTENT_BYTES = 10 * 1024 * 1024;
 
     @Autowired
     private DocumentRepository repository;
@@ -123,7 +129,6 @@ public class DocumentServiceImpl implements DocumentService {
                                 return port.deleteContent(java.util.UUID.fromString(entity.getId().toString()))
                                         .doOnSuccess(result -> log.debug("Document content deleted from ECM storage"))
                                         .doOnError(error -> log.warn("Failed to delete document content from ECM storage: {}", error.getMessage()))
-                                        .onErrorComplete() // Continue even if content deletion fails
                                         .then(repository.delete(entity));
                             })
                             .orElse(repository.delete(entity))
@@ -156,52 +161,46 @@ public class DocumentServiceImpl implements DocumentService {
                     return ecmPortProvider.getDocumentContentPort()
                             .map(port -> {
                                 log.debug("Using ECM DocumentContentPort to store content");
-                                // Store content stream and get storage path
-                                // Convert FilePart content to byte array for ECM storage
-                                return filePart.content()
-                                        .collectList()
-                                        .map(dataBuffers -> {
-                                            // Convert DataBuffer list to byte array
-                                            int totalSize = dataBuffers.stream().mapToInt(DataBuffer::readableByteCount).sum();
-                                            byte[] bytes = new byte[totalSize];
-                                            int offset = 0;
-                                            for (DataBuffer buffer : dataBuffers) {
-                                                int length = buffer.readableByteCount();
-                                                buffer.read(bytes, offset, length);
-                                                offset += length;
+                                return DataBufferUtils.join(filePart.content(), MAX_UPLOAD_CONTENT_BYTES)
+                                        .switchIfEmpty(Mono.error(new IllegalArgumentException("Nonempty document content required")))
+                                        .map(buffer -> {
+                                            try {
+                                                byte[] bytes = new byte[buffer.readableByteCount()];
+                                                if (bytes.length == 0) throw new IllegalArgumentException("Nonempty document content required");
+                                                buffer.read(bytes);
+                                                return bytes;
+                                            } finally {
+                                                DataBufferUtils.release(buffer);
                                             }
-                                            return bytes;
                                         })
                                         .flatMap(contentBytes -> {
                                             String mimeType = filePart.headers().getContentType() != null
                                                     ? filePart.headers().getContentType().toString()
                                                     : "application/octet-stream";
-                                            return port.storeContent(documentUuid, contentBytes, mimeType);
+                                            String checksum = contentDigest(contentBytes);
+                                            long contentLength = contentBytes.length;
+                                            return port.storeContent(documentUuid, contentBytes, mimeType)
+                                                    .switchIfEmpty(Mono.error(new IllegalStateException("Stored content reference required")))
+                                                    .flatMap(storagePath -> {
+                                                        if (storagePath.isBlank()) {
+                                                            return Mono.error(new IllegalStateException("Stored content reference required"));
+                                                        }
+                                                        document.setFileName(filePart.filename());
+                                                        document.setStoragePath(storagePath);
+                                                        document.setMimeType(mimeType);
+                                                        document.setFileSize(contentLength);
+                                                        document.setChecksum(checksum);
+                                                        return repository.save(document)
+                                                                .flatMap(savedDoc -> ecmPortProvider.getDocumentSearchPort()
+                                                                        .map(searchPort -> searchPort.indexDocument(ecmDomainMapper.toEcmDocument(savedDoc))
+                                                                                .onErrorResume(err -> {
+                                                                                    log.warn("Indexing failed for document {}: {}", savedDoc.getId(), err.getMessage());
+                                                                                    return Mono.empty();
+                                                                                })
+                                                                                .thenReturn(savedDoc))
+                                                                        .orElse(Mono.just(savedDoc)));
+                                                    });
                                         })
-                                        .flatMap(storagePath -> {
-                                    log.debug("Content stored successfully at path: {}", storagePath);
-
-                                    // Update document metadata with ECM storage info
-                                    document.setFileName(filePart.filename());
-                                    document.setStoragePath(storagePath);
-                                    document.setMimeType(filePart.headers().getContentType() != null ?
-                                            filePart.headers().getContentType().toString() : null);
-                                    // Save updated document metadata
-                                    return repository.save(document)
-                                            .flatMap(savedDoc -> {
-                                                // Index document in search if available
-                                                return ecmPortProvider.getDocumentSearchPort()
-                                                        .map(searchPort -> searchPort.indexDocument(ecmDomainMapper.toEcmDocument(savedDoc))
-                                                                .onErrorResume(err -> {
-                                                                    log.warn("Indexing failed for document {}: {}", savedDoc.getId(), err.getMessage());
-                                                                    return Mono.empty();
-                                                                })
-                                                                .thenReturn(savedDoc))
-                                                        .orElse(Mono.just(savedDoc));
-                                            })
-                                            .doOnSuccess(savedDoc -> log.info("Document content uploaded successfully for ID: {}", savedDoc.getId()))
-                                            .doOnError(error -> log.error("Failed to save document metadata after content upload: {}", error.getMessage(), error));
-                                })
                                 .doOnError(error -> {
                                     log.error("Failed to upload content for document ID {}: {}", documentId, error.getMessage(), error);
                                 });
@@ -214,6 +213,14 @@ public class DocumentServiceImpl implements DocumentService {
                 // Note: Search indexing would be handled by ECM search port if available
                 .map(savedDocument -> savedDocument)
                 .map(mapper::toDTO);
+    }
+
+    private static String contentDigest(byte[] content) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("Required content digest unavailable", impossible);
+        }
     }
 
     @Override

@@ -17,9 +17,6 @@
 package io.fireflysoftware.commons.ecm.core.services.impl;
 
 import io.fireflysoftware.commons.ecm.core.mappers.SignatureRequestMapper;
-import io.fireflysoftware.commons.ecm.interfaces.dtos.SignatureRequestDTO;
-import io.fireflysoftware.commons.ecm.interfaces.enums.SignatureStatus;
-import io.fireflysoftware.commons.ecm.models.entities.SignatureRequest;
 import io.fireflysoftware.commons.ecm.models.repositories.SignatureRequestRepository;
 import org.fireflyframework.ecm.port.esignature.SignatureRequestPort;
 import org.fireflyframework.ecm.service.EcmPortProvider;
@@ -28,14 +25,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import java.time.LocalDateTime;
-import java.util.Optional;
 import java.util.UUID;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,31 +50,18 @@ class SignatureRequestServiceImplTest {
     private SignatureRequestServiceImpl service;
 
     @Test
-    void sendNotification_WithEcmPort_UpdatesLocally() {
+    void sendNotification_WithoutTrustedDispatch_RefusesBeforeProviderOrLocalUpdates() {
         UUID id = UUID.randomUUID();
-        SignatureRequest entity = SignatureRequest.builder()
-                .id(id)
-                .requestStatus(SignatureStatus.PENDING)
-                .notificationSent(false)
-                .build();
-        SignatureRequest saved = SignatureRequest.builder()
-                .id(id)
-                .requestStatus(SignatureStatus.PENDING)
-                .notificationSent(true)
-                .notificationSentAt(LocalDateTime.now())
-                .build();
-        SignatureRequestDTO dto = SignatureRequestDTO.builder().id(id).build();
-
-        when(repository.findById(id)).thenReturn(Mono.just(entity));
-        when(ecmPortProvider.getSignatureRequestPort()).thenReturn(Optional.of(signatureRequestPort));
-        when(signatureRequestPort.resendNotification(id)).thenReturn(Mono.empty());
-        when(repository.save(any(SignatureRequest.class))).thenReturn(Mono.just(saved));
-        when(mapper.toDTO(saved)).thenReturn(dto);
 
         StepVerifier.create(service.sendNotification(id))
-                .expectNext(dto)
-                .verifyComplete();
+                .expectErrorSatisfies(error -> {
+                    org.junit.jupiter.api.Assertions.assertInstanceOf(
+                            io.fireflysoftware.commons.ecm.core.signing.SigningIntegrationUnavailableException.class, error);
+                    org.junit.jupiter.api.Assertions.assertEquals(503,
+                            ((org.springframework.web.server.ResponseStatusException) error).getStatusCode().value());
+                })
+                .verify();
 
-        verify(signatureRequestPort).resendNotification(id);
+        verifyNoInteractions(repository, mapper, ecmPortProvider, signatureRequestPort);
     }
 }

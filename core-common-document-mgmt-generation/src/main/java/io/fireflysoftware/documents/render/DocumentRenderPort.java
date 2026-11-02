@@ -22,4 +22,8 @@ import io.fireflysoftware.documents.IssueDocument;
 public interface DocumentRenderPort {
 
     RenderedDocument render(String templateCode, String kitKind, String label, IssueDocument command);
+    default RenderedDocument render(io.fireflysoftware.commons.ecm.core.services.generation.DocumentCurrentSnapshot snapshot,
+            String factsJson,GovernedRenderProfile profile) {
+        throw new IllegalStateException("Governed rendering capability unavailable");
+    }
 }

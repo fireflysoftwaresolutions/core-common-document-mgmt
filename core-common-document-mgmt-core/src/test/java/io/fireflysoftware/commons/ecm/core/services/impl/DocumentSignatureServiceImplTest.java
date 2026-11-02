@@ -328,93 +328,46 @@ class DocumentSignatureServiceImplTest {
     }
 
     @Test
-    void initiateSigningProcess_ShouldSetPendingStatus_AndCreateSignature() {
-        // Given
+    void initiateSigningProcess_ShouldRefuseWithoutTrustedDispatch_AndLeaveInputUnchanged() {
         DocumentSignatureDTO inputDTO = DocumentSignatureDTO.builder()
                 .documentId(TEST_DOCUMENT_ID)
                 .signerName("Bob Wilson")
                 .signerEmail("bob.wilson@example.com")
                 .build();
 
-        UUID newSignatureId = UUID.fromString("550e8400-e29b-41d4-a716-446655440003");
-        DocumentSignature savedEntity = DocumentSignature.builder()
-                .id(newSignatureId)
-                .documentId(TEST_DOCUMENT_ID)
-                .signerName("Bob Wilson")
-                .signerEmail("bob.wilson@example.com")
-                .signatureStatus(SignatureStatus.PENDING)
-                .build();
-
-        DocumentSignatureDTO savedDTO = DocumentSignatureDTO.builder()
-                .id(newSignatureId)
-                .documentId(TEST_DOCUMENT_ID)
-                .signerName("Bob Wilson")
-                .signerEmail("bob.wilson@example.com")
-                .signatureStatus(SignatureStatus.PENDING)
-                .build();
-
-        when(mapper.toEntity(any(DocumentSignatureDTO.class))).thenReturn(savedEntity);
-        when(repository.save(any(DocumentSignature.class))).thenReturn(Mono.just(savedEntity));
-        when(mapper.toDTO(savedEntity)).thenReturn(savedDTO);
-
-        // When & Then
         StepVerifier.create(documentSignatureService.initiateSigningProcess(inputDTO))
-                .expectNext(savedDTO)
-                .verifyComplete();
-
-        // Verify status was set to PENDING
-        assert inputDTO.getSignatureStatus() == SignatureStatus.PENDING;
-        verify(repository).save(any(DocumentSignature.class));
-    }
-
-    @Test
-    void cancelSignature_ShouldSetCanceledStatus_WhenSignatureIsPending() {
-        // Given
-        DocumentSignature pendingSignature = DocumentSignature.builder()
-                .id(TEST_SIGNATURE_ID)
-                .signatureStatus(SignatureStatus.PENDING)
-                .build();
-
-        DocumentSignature canceledSignature = DocumentSignature.builder()
-                .id(TEST_SIGNATURE_ID)
-                .signatureStatus(SignatureStatus.CANCELED)
-                .build();
-
-        DocumentSignatureDTO canceledDTO = DocumentSignatureDTO.builder()
-                .id(TEST_SIGNATURE_ID)
-                .signatureStatus(SignatureStatus.CANCELED)
-                .build();
-
-        when(repository.findById(TEST_SIGNATURE_ID)).thenReturn(Mono.just(pendingSignature));
-        when(repository.save(any(DocumentSignature.class))).thenReturn(Mono.just(canceledSignature));
-        when(mapper.toDTO(canceledSignature)).thenReturn(canceledDTO);
-
-        // When & Then
-        StepVerifier.create(documentSignatureService.cancelSignature(TEST_SIGNATURE_ID))
-                .expectNext(canceledDTO)
-                .verifyComplete();
-
-        verify(repository).findById(TEST_SIGNATURE_ID);
-        verify(repository).save(any(DocumentSignature.class));
-    }
-
-    @Test
-    void cancelSignature_ShouldThrowError_WhenSignatureIsAlreadySigned() {
-        // Given
-        DocumentSignature signedSignature = DocumentSignature.builder()
-                .id(TEST_SIGNATURE_ID)
-                .signatureStatus(SignatureStatus.SIGNED)
-                .build();
-
-        when(repository.findById(TEST_SIGNATURE_ID)).thenReturn(Mono.just(signedSignature));
-
-        // When & Then
-        StepVerifier.create(documentSignatureService.cancelSignature(TEST_SIGNATURE_ID))
-                .expectError(IllegalStateException.class)
+                .expectErrorSatisfies(error -> {
+                    org.junit.jupiter.api.Assertions.assertInstanceOf(
+                            io.fireflysoftware.commons.ecm.core.signing.SigningIntegrationUnavailableException.class, error);
+                    org.junit.jupiter.api.Assertions.assertEquals(503,
+                            ((org.springframework.web.server.ResponseStatusException) error).getStatusCode().value());
+                })
                 .verify();
 
-        verify(repository).findById(TEST_SIGNATURE_ID);
-        verify(repository, never()).save(any());
+        org.junit.jupiter.api.Assertions.assertNull(inputDTO.getSignatureStatus());
+        verifyNoInteractions(repository, mapper, ecmPortProvider, signatureRequestService,
+                ecmDomainMapper, ecmParameterValidator);
+    }
+
+    @Test
+    void cancelSignature_ShouldRefuseWithoutTrustedDispatch_BeforeReadingPendingState() {
+        StepVerifier.create(documentSignatureService.cancelSignature(TEST_SIGNATURE_ID))
+                .expectError(io.fireflysoftware.commons.ecm.core.signing.SigningIntegrationUnavailableException.class)
+                .verify();
+
+        verifyNoInteractions(repository, mapper, ecmPortProvider, signatureRequestService,
+                ecmDomainMapper, ecmParameterValidator);
+    }
+
+    @Test
+    void cancelSignature_ShouldRefuseWithoutTrustedDispatch_BeforeReadingSignedState() {
+        StepVerifier.create(documentSignatureService.cancelSignature(TEST_SIGNATURE_ID))
+                .expectErrorSatisfies(error -> org.junit.jupiter.api.Assertions.assertEquals(503,
+                        ((org.springframework.web.server.ResponseStatusException) error).getStatusCode().value()))
+                .verify();
+
+        verifyNoInteractions(repository, mapper, ecmPortProvider, signatureRequestService,
+                ecmDomainMapper, ecmParameterValidator);
     }
 
     @Test

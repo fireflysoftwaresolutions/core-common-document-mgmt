@@ -16,6 +16,8 @@
 
 package io.fireflysoftware.documents;
 
+import io.fireflysoftware.documents.impl.DocumentIssuance;
+
 import io.fireflysoftware.documents.render.DocumentRenderPort;
 import io.fireflysoftware.documents.render.FreeMarkerDocumentRenderAdapter;
 import io.fireflysoftware.documents.storage.DocumentStoragePort;

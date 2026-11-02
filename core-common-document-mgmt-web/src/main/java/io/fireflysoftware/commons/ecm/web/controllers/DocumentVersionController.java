@@ -133,7 +133,9 @@ public class DocumentVersionController {
     @GetMapping("/{versionId}/download")
     @Operation(summary = "Download document version content", description = "Downloads the content of a specific document version")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Version content downloaded successfully"),
+            @ApiResponse(responseCode = "200", description = "Version content downloaded successfully",
+                    content = @Content(mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                            schema = @Schema(type = "string", format = "binary"))),
             @ApiResponse(responseCode = "404", description = "Document version not found"),
             @ApiResponse(responseCode = "404", description = "Version content not available")
     })

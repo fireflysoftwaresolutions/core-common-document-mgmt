@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-package io.fireflysoftware.documents;
+package io.fireflysoftware.documents.impl;
+
+import io.fireflysoftware.documents.*;
+import io.fireflysoftware.commons.ecm.core.services.generation.*;
+import org.fireflyframework.core.transaction.R2dbcOperationBudget;
+import reactor.core.publisher.Mono;
 
 import io.fireflysoftware.documents.render.DocumentRenderPort;
 import io.fireflysoftware.documents.render.RenderedDocument;
@@ -35,15 +40,66 @@ public final class DocumentIssuance implements DocumentPort {
     private final DocumentTemplateCatalog catalog;
     private final DocumentRenderPort renderer;
     private final DocumentStoragePort storage;
+    private final DocumentCurrentSnapshotService snapshots;
+    private final DocumentRenderProfiles profiles;
+    private final DocumentGenerationEventSource events;
+    private final DocumentGenerationCommitService commits;
+    private final java.time.Clock clock;
+    private final java.util.function.LongSupplier nanos;
 
     public DocumentIssuance(DocumentTemplateCatalog catalog, DocumentRenderPort renderer, DocumentStoragePort storage) {
         this.catalog = catalog;
         this.renderer = renderer;
         this.storage = storage;
+        this.snapshots=null;this.profiles=null;this.events=null;this.commits=null;this.clock=null;this.nanos=null;
     }
+
+    public DocumentIssuance(io.fireflysoftware.commons.ecm.core.services.generation.DocumentCurrentSnapshotService snapshots,
+            DocumentRenderPort renderer,DocumentRenderProfiles profiles,DocumentGenerationEventSource events,
+            io.fireflysoftware.commons.ecm.core.services.generation.DocumentGenerationCommitService commits,
+            java.time.Clock clock,java.util.function.LongSupplier nanos) {
+        this.catalog=null;this.storage=null;this.renderer=java.util.Objects.requireNonNull(renderer);
+        this.snapshots=java.util.Objects.requireNonNull(snapshots);this.profiles=java.util.Objects.requireNonNull(profiles);
+        this.events=java.util.Objects.requireNonNull(events);this.commits=java.util.Objects.requireNonNull(commits);
+        this.clock=java.util.Objects.requireNonNull(clock);this.nanos=java.util.Objects.requireNonNull(nanos);
+    }
+
+    @Override public Mono<DocumentGenerationCommitService.LocalCommit> issue(GovernedIssueDocument command,R2dbcOperationBudget original) {
+        return Mono.defer(()->{
+            if(snapshots==null)throw new IllegalStateException("Governed issuance capability unavailable");
+            java.util.Objects.requireNonNull(command);java.util.Objects.requireNonNull(original);original.remaining();
+            var started=clock.instant();var envelope=original.intersect(R2dbcOperationBudget.observed(started,
+                    started.plusSeconds(5),nanos.getAsLong(),java.time.Duration.ofSeconds(5),clock,nanos));
+            return snapshots.observe(command.selection(),original).switchIfEmpty(Mono.error(unavailable())).flatMap(snapshot->{
+                envelope.remaining();
+                if(!command.selection().equals(snapshot.selection()))throw unavailable();snapshot.budget().remaining();
+                var rendered=renderer.render(snapshot,command.factsJson(),profiles.require(snapshot));
+                if(!snapshot.mediaType().equals(rendered.mediaType()))throw unavailable();
+                byte[] bytes=rendered.html().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                envelope.remaining();snapshot.budget().remaining();
+                return events.bind(command.documentId(),snapshot,bytes.clone(),original).switchIfEmpty(Mono.error(unavailable()))
+                        .timeout(envelope.remaining()).flatMap(event->{
+                    envelope.remaining();snapshot.budget().remaining();
+                    var request=new DocumentGenerationStorage.Request(command.selection().product().tenantId(),command.documentId(),snapshot,event,bytes);
+                    String digest=DocumentStorageIntent.digest(request);
+                    if(!digest.equals(event.evidenceDigest()))throw unavailable();
+                    return commits.store(request,original).switchIfEmpty(Mono.error(unavailable())).map(committed->{
+                        envelope.remaining();snapshot.budget().remaining();
+                        if(committed.local()==null||!request.resourceTenantId().equals(committed.local().resourceTenantId())
+                                ||!request.documentId().equals(committed.local().documentId())||!event.eventId().equals(committed.eventId())
+                                ||!digest.equals(committed.requestDigest())||!DocumentStorageIntent.contentDigest(bytes).equals(committed.local().contentDigest())
+                                ||committed.providerState()!=DocumentGenerationCommitService.ProviderState.PENDING_PROVIDER)throw unavailable();
+                        return committed;
+                    });
+                });
+            }).timeout(envelope.remaining());
+        });
+    }
+    private static IllegalStateException unavailable(){return new IllegalStateException("Exact admitted audited governed issuance required");}
 
     @Override
     public IssuedDocument issue(IssueDocument command) {
+        if(catalog==null||storage==null)throw new IllegalStateException("Legacy catalog/storage capability unavailable");
         validate(command);
         DocumentTemplate template = resolve(command);
         RenderedDocument rendered = renderer.render(template.code(), template.kitKind(), template.label(), command);
@@ -65,6 +121,7 @@ public final class DocumentIssuance implements DocumentPort {
 
     @Override
     public IssuedDocument read(UUID documentId) {
+        if(storage==null)throw new IllegalStateException("Legacy catalog/storage capability unavailable");
         if (documentId == null) {
             throw new IllegalArgumentException("Document id is required");
         }
